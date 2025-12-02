@@ -381,12 +381,16 @@ export default function TenanciesPage() {
         .eq('id', payload.id)
       if (error) throw error
 
-      // Check if start_date or monthly_rent changed - if so, recalculate rent charges
+      // Check if any key field changed that affects rent charges
       const startDateChanged = oldTenancy.start_date !== payload.startDate
+      const endDateChanged = (oldTenancy.end_date || '') !== (payload.endDate || '')
       const rentChanged = oldTenancy.monthly_rent_amount !== monthlyRent
+      const dueDayChanged = oldTenancy.rent_due_day !== rentDueDay
+      const statusChanged = oldTenancy.status !== payload.status
       const dueDay = rentDueDay || 5
 
-      if (startDateChanged || rentChanged) {
+      // Recalculate if any of these changed
+      if (startDateChanged || endDateChanged || rentChanged || dueDayChanged || statusChanged) {
         // Get existing rent charges for this tenancy
         const { data: existingCharges } = await supabase
           .from('rent_charges')
@@ -404,16 +408,36 @@ export default function TenanciesPage() {
         // Calculate total payments
         const totalPaid = (existingPayments || []).reduce((sum, p) => sum + p.amount, 0)
 
-        // Calculate which months need rent charges (from start_date to current month)
+        // Calculate which months need rent charges (from start_date to end_date or current month)
         const startDate = new Date(payload.startDate)
         const now = new Date()
         const currentPeriod = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
         
+        // Determine the end limit for rent charges
+        let endLimit = now
+        let endPeriod = currentPeriod
+        
+        // If tenancy has an end date, don't generate charges beyond it
+        if (payload.endDate) {
+          const endDate = new Date(payload.endDate)
+          if (endDate < now) {
+            endLimit = endDate
+            endPeriod = `${endDate.getFullYear()}-${String(endDate.getMonth() + 1).padStart(2, '0')}`
+          }
+        }
+        
+        // If tenancy status is ENDED, use the end date as limit
+        if (payload.status === 'ENDED' && payload.endDate) {
+          const endDate = new Date(payload.endDate)
+          endLimit = endDate
+          endPeriod = `${endDate.getFullYear()}-${String(endDate.getMonth() + 1).padStart(2, '0')}`
+        }
+        
         const periodsNeeded: string[] = []
         const tempDate = new Date(startDate.getFullYear(), startDate.getMonth(), 1)
-        while (tempDate <= now) {
+        while (tempDate <= endLimit) {
           const period = `${tempDate.getFullYear()}-${String(tempDate.getMonth() + 1).padStart(2, '0')}`
-          if (period <= currentPeriod) {
+          if (period <= endPeriod) {
             periodsNeeded.push(period)
           }
           tempDate.setMonth(tempDate.getMonth() + 1)
