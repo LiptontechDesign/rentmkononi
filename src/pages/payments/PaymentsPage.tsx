@@ -255,12 +255,25 @@ export default function PaymentsPage() {
   const updateMutation = useMutation({
     mutationFn: async (payload: PaymentFormState) => {
       if (!payload.id) throw new Error('Missing payment id')
+      if (!landlord) throw new Error('Landlord profile not loaded')
 
       const amount = parseInt(payload.amount, 10)
       if (Number.isNaN(amount) || amount <= 0) {
         throw new Error('Amount must be a positive number')
       }
 
+      // Get the old payment to compare what changed
+      const { data: oldPayment, error: fetchError } = await supabase
+        .from('payments')
+        .select('*')
+        .eq('id', payload.id)
+        .single()
+      if (fetchError) throw fetchError
+
+      const amountChanged = oldPayment.amount !== amount
+      const tenancyChanged = oldPayment.tenancy_id !== (payload.tenancyId || null)
+
+      // Update the payment
       const { error } = await supabase
         .from('payments')
         .update({
@@ -271,9 +284,100 @@ export default function PaymentsPage() {
           raw_reference: payload.rawReference.trim() || null,
           tenancy_id: payload.tenancyId || null,
           notes: payload.paymentMethod,
+          is_matched: false, // Will be recalculated
         })
         .eq('id', payload.id)
       if (error) throw error
+
+      // If amount or tenancy changed, recalculate allocations
+      if (amountChanged || tenancyChanged) {
+        // Get existing allocations for this payment
+        const { data: existingAllocations } = await supabase
+          .from('payment_allocations')
+          .select('id, rent_charge_id, allocated_amount')
+          .eq('payment_id', payload.id)
+
+        // Reverse old allocations - restore balances on rent charges
+        if (existingAllocations && existingAllocations.length > 0) {
+          for (const alloc of existingAllocations) {
+            // Get current charge
+            const { data: charge } = await supabase
+              .from('rent_charges')
+              .select('amount, balance')
+              .eq('id', alloc.rent_charge_id)
+              .single()
+
+            if (charge) {
+              const newBalance = Math.min(charge.balance + alloc.allocated_amount, charge.amount)
+              const newStatus = newBalance >= charge.amount ? 'UNPAID' : newBalance > 0 ? 'PARTIAL' : 'PAID'
+              
+              await supabase
+                .from('rent_charges')
+                .update({ balance: newBalance, status: newStatus })
+                .eq('id', alloc.rent_charge_id)
+            }
+          }
+
+          // Delete old allocations
+          await supabase
+            .from('payment_allocations')
+            .delete()
+            .eq('payment_id', payload.id)
+        }
+
+        // If tenancy is selected, reallocate to new tenancy's charges
+        if (payload.tenancyId) {
+          const { data: unpaidCharges } = await supabase
+            .from('rent_charges')
+            .select('*')
+            .eq('landlord_id', landlord.id)
+            .eq('tenancy_id', payload.tenancyId)
+            .gt('balance', 0)
+            .order('period', { ascending: true })
+
+          let remainingAmount = amount
+          let fullyAllocated = true
+
+          for (const charge of (unpaidCharges || []) as RentCharge[]) {
+            if (remainingAmount <= 0) break
+
+            const allocateAmount = Math.min(remainingAmount, charge.balance)
+
+            const { error: allocError } = await supabase
+              .from('payment_allocations')
+              .insert({
+                landlord_id: landlord.id,
+                payment_id: payload.id,
+                rent_charge_id: charge.id,
+                allocated_amount: allocateAmount,
+              })
+
+            if (allocError) {
+              console.error('Error creating allocation:', allocError)
+              fullyAllocated = false
+              continue
+            }
+
+            const newBalance = charge.balance - allocateAmount
+            const newStatus = newBalance <= 0 ? 'PAID' : newBalance < charge.amount ? 'PARTIAL' : 'UNPAID'
+
+            await supabase
+              .from('rent_charges')
+              .update({ balance: newBalance, status: newStatus })
+              .eq('id', charge.id)
+
+            remainingAmount -= allocateAmount
+          }
+
+          // Update payment matched status
+          if (remainingAmount <= 0 && fullyAllocated) {
+            await supabase
+              .from('payments')
+              .update({ is_matched: true })
+              .eq('id', payload.id)
+          }
+        }
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['payments', landlord?.id] })
@@ -283,6 +387,8 @@ export default function PaymentsPage() {
       queryClient.invalidateQueries({ queryKey: ['outstanding-charges-tenants', landlord?.id] })
       queryClient.invalidateQueries({ queryKey: ['all-rent-charges-for-tenants', landlord?.id] })
       queryClient.invalidateQueries({ queryKey: ['current-month-payments-tenancies', landlord?.id] })
+      queryClient.invalidateQueries({ queryKey: ['all-payments-for-tenants', landlord?.id] })
+      queryClient.invalidateQueries({ queryKey: ['all-allocations-for-tenants', landlord?.id] })
     },
   })
 
