@@ -2,7 +2,6 @@ import { Link, useLocation } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/contexts/AuthContext'
 import {
-  Home,
   Building2,
   Users,
   CreditCard,
@@ -42,9 +41,13 @@ export function Sidebar() {
   return (
     <div className="flex h-full flex-col bg-card border-r">
       {/* Logo */}
-      <div className="flex h-16 items-center gap-2 px-6 border-b">
-        <Home className="h-6 w-6 text-primary" />
-        <span className="text-xl font-bold">RentMkononi</span>
+      <div className="flex h-16 items-center gap-3 px-4 border-b">
+        <img 
+          src="/rentmkononi/Logo.png" 
+          alt="RentMkononi Logo" 
+          className="h-10 w-10 object-contain rounded"
+        />
+        <span className="text-lg font-bold text-primary">RentMkononi</span>
       </div>
 
       {/* Navigation */}

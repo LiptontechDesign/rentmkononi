@@ -12,8 +12,13 @@ export function MainLayout() {
       {/* Main content */}
       <div className="flex flex-1 flex-col overflow-hidden">
         {/* Mobile header - can be expanded later */}
-        <header className="flex h-16 items-center gap-4 border-b bg-card px-6 md:hidden">
-          <span className="text-xl font-bold">RentMkononi</span>
+        <header className="flex h-16 items-center gap-3 border-b bg-card px-4 md:hidden">
+          <img 
+            src="/rentmkononi/Logo.png" 
+            alt="RentMkononi Logo" 
+            className="h-10 w-10 object-contain rounded"
+          />
+          <span className="text-lg font-bold text-primary">RentMkononi</span>
         </header>
 
         {/* Page content */}

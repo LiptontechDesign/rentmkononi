@@ -116,12 +116,13 @@ export default function TenantsPage() {
       if (!landlord) return []
       const { data, error } = await supabase
         .from('rent_charges')
-        .select('id, balance, tenancy_id, due_date')
+        .select('id, balance, tenancy_id, due_date, period')
         .eq('landlord_id', landlord.id)
         .gt('balance', 0)
+        .order('period', { ascending: true })
 
       if (error) throw error
-      return data as Pick<RentCharge, 'id' | 'balance' | 'tenancy_id' | 'due_date'>[]
+      return data as Pick<RentCharge, 'id' | 'balance' | 'tenancy_id' | 'due_date' | 'period'>[]
     },
   })
 
@@ -222,16 +223,21 @@ export default function TenantsPage() {
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
   }, [])
 
-  // Financial summaries per tenant
-  const totalOutstandingByTenantId = useMemo(() => {
-    const total: Record<string, number> = {}
+  // Financial summaries per tenant with unpaid months details
+  const outstandingDetailsByTenantId = useMemo(() => {
+    const details: Record<string, { total: number; unpaidMonths: string[] }> = {}
     ;(outstandingCharges || []).forEach((c) => {
       const tenancy = tenancyById.get(c.tenancy_id)
       if (!tenancy) return
       const tenantId = tenancy.tenant_id
-      total[tenantId] = (total[tenantId] || 0) + c.balance
+      if (!details[tenantId]) {
+        details[tenantId] = { total: 0, unpaidMonths: [] }
+      }
+      details[tenantId].total += c.balance
+      // Add the formatted period to unpaid months list
+      details[tenantId].unpaidMonths.push(formatPeriod(c.period))
     })
-    return total
+    return details
   }, [outstandingCharges, tenancyById])
 
   // Calculate credit (unallocated payment amount) per tenant
@@ -809,7 +815,9 @@ export default function TenantsPage() {
                     const activeTenancy = activeTenancyByTenantId.get(tenant.id)
                     const unit = activeTenancy ? unitById.get(activeTenancy.unit_id) : undefined
                     const property = unit ? propertyById.get(unit.property_id) : undefined
-                    const totalOutstanding = totalOutstandingByTenantId[tenant.id] || 0
+                    const outstandingDetails = outstandingDetailsByTenantId[tenant.id]
+                    const totalOutstanding = outstandingDetails?.total || 0
+                    const unpaidMonths = outstandingDetails?.unpaidMonths || []
 
                     return (
                       <tr key={tenant.id} className="border-b last:border-0">
@@ -886,9 +894,18 @@ export default function TenantsPage() {
                           })()}
                         </td>
                         <td className="py-2 pr-4">
-                          <span className={totalOutstanding > 0 ? 'text-red-600 font-medium' : 'text-green-600'}>
-                            {formatKES(totalOutstanding)}
-                          </span>
+                          {totalOutstanding > 0 ? (
+                            <div>
+                              <span className="text-red-600 font-medium">
+                                {formatKES(totalOutstanding)}
+                              </span>
+                              <div className="text-xs text-muted-foreground mt-0.5">
+                                ({unpaidMonths.join(', ')} unpaid)
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-green-600">{formatKES(0)}</span>
+                          )}
                         </td>
                         <td className="py-2 pr-4 flex justify-end gap-2">
                           <Button

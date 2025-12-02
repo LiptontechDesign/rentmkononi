@@ -6,7 +6,6 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Spinner } from '@/components/ui/spinner'
-import { Home } from 'lucide-react'
 
 export default function ResetPasswordPage() {
   const [password, setPassword] = useState('')
@@ -84,9 +83,13 @@ export default function ResetPasswordPage() {
         <Card className="w-full max-w-md">
           <CardHeader className="text-center">
             <div className="flex justify-center mb-4">
-              <div className="flex items-center gap-2 text-primary">
-                <Home className="h-8 w-8" />
-                <span className="text-2xl font-bold">RentMkononi</span>
+              <div className="flex items-center gap-3">
+                <img 
+                  src="/rentmkononi/Logo.png" 
+                  alt="RentMkononi Logo" 
+                  className="h-12 w-12 object-contain rounded"
+                />
+                <span className="text-2xl font-bold text-primary">RentMkononi</span>
               </div>
             </div>
             <CardTitle className="text-xl text-red-600">Invalid or expired link</CardTitle>
@@ -109,9 +112,13 @@ export default function ResetPasswordPage() {
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <div className="flex justify-center mb-4">
-            <div className="flex items-center gap-2 text-primary">
-              <Home className="h-8 w-8" />
-              <span className="text-2xl font-bold">RentMkononi</span>
+            <div className="flex items-center gap-3">
+              <img 
+                src="/rentmkononi/Logo.png" 
+                alt="RentMkononi Logo" 
+                className="h-12 w-12 object-contain rounded"
+              />
+              <span className="text-2xl font-bold text-primary">RentMkononi</span>
             </div>
           </div>
           <CardTitle className="text-xl">Reset your password</CardTitle>
