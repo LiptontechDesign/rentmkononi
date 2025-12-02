@@ -491,9 +491,18 @@ export default function RentChargesPage() {
                         <td className="py-2 pr-4 text-muted-foreground">{formatDate(charge.due_date)}</td>
                         <td className="py-2 pr-4 text-muted-foreground">{formatKES(charge.amount)}</td>
                         <td className="py-2 pr-4">
-                          <span className={hasBalance ? 'text-red-600 font-medium' : 'text-green-600'}>
-                            {formatKES(charge.balance)}
-                          </span>
+                          {hasBalance ? (
+                            <div>
+                              <span className="text-red-600 font-medium">
+                                {formatKES(charge.balance)}
+                              </span>
+                              <div className="text-xs text-muted-foreground">
+                                {formatPeriod(charge.period)} unpaid
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-green-600">{formatKES(0)}</span>
+                          )}
                         </td>
                         <td className="py-2 pr-4">
                           <span
