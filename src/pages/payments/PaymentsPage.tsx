@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
-import type { Payment, Tenancy, Tenant, Unit, Property, PaymentSource } from '@/types/database'
+import type { Payment, Tenancy, Tenant, Unit, Property, PaymentSource, RentCharge } from '@/types/database'
 import { useAuth } from '@/contexts/AuthContext'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -155,22 +155,100 @@ export default function PaymentsPage() {
         throw new Error('Amount must be a positive number')
       }
 
-      const { error } = await supabase.from('payments').insert({
-        landlord_id: landlord.id,
-        amount,
-        paid_at: payload.paidAt || new Date().toISOString(),
-        source: 'MANUAL',
-        phone_number: null,
-        raw_reference: payload.rawReference.trim() || null,
-        tenancy_id: payload.tenancyId || null,
-        // Store the chosen payment method (cash/bank/cheque/other) in notes
-        notes: payload.paymentMethod,
-        is_matched: false,
-      })
-      if (error) throw error
+      // 1. Insert the payment
+      const { data: newPayment, error: insertError } = await supabase
+        .from('payments')
+        .insert({
+          landlord_id: landlord.id,
+          amount,
+          paid_at: payload.paidAt || new Date().toISOString(),
+          source: 'MANUAL',
+          phone_number: null,
+          raw_reference: payload.rawReference.trim() || null,
+          tenancy_id: payload.tenancyId || null,
+          notes: payload.paymentMethod,
+          is_matched: false,
+        })
+        .select()
+        .single()
+
+      if (insertError) throw insertError
+
+      // 2. If tenancy is selected, auto-allocate to unpaid rent charges
+      if (payload.tenancyId && newPayment) {
+        // Fetch unpaid rent charges for this tenancy (oldest first by period)
+        const { data: unpaidCharges, error: chargesError } = await supabase
+          .from('rent_charges')
+          .select('*')
+          .eq('landlord_id', landlord.id)
+          .eq('tenancy_id', payload.tenancyId)
+          .gt('balance', 0)
+          .order('period', { ascending: true })
+
+        if (chargesError) {
+          console.error('Error fetching rent charges:', chargesError)
+          return // Payment created, but allocation failed - user can allocate manually
+        }
+
+        let remainingAmount = amount
+        let fullyAllocated = true
+
+        // Allocate to each charge until payment is exhausted
+        for (const charge of (unpaidCharges || []) as RentCharge[]) {
+          if (remainingAmount <= 0) break
+
+          const allocateAmount = Math.min(remainingAmount, charge.balance)
+
+          // Create allocation record
+          const { error: allocError } = await supabase
+            .from('payment_allocations')
+            .insert({
+              landlord_id: landlord.id,
+              payment_id: newPayment.id,
+              rent_charge_id: charge.id,
+              allocated_amount: allocateAmount,
+            })
+
+          if (allocError) {
+            console.error('Error creating allocation:', allocError)
+            fullyAllocated = false
+            continue
+          }
+
+          // Update rent charge balance and status
+          const newBalance = charge.balance - allocateAmount
+          const newStatus = newBalance <= 0 ? 'PAID' : newBalance < charge.amount ? 'PARTIAL' : 'UNPAID'
+
+          const { error: updateChargeError } = await supabase
+            .from('rent_charges')
+            .update({ balance: newBalance, status: newStatus })
+            .eq('id', charge.id)
+
+          if (updateChargeError) {
+            console.error('Error updating rent charge:', updateChargeError)
+          }
+
+          remainingAmount -= allocateAmount
+        }
+
+        // Mark payment as matched if fully allocated
+        if (remainingAmount <= 0 && fullyAllocated) {
+          await supabase
+            .from('payments')
+            .update({ is_matched: true })
+            .eq('id', newPayment.id)
+        }
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['payments', landlord?.id] })
+      queryClient.invalidateQueries({ queryKey: ['rent-charges', landlord?.id] })
+      queryClient.invalidateQueries({ queryKey: ['payment-allocations', landlord?.id] })
+      // Also invalidate related queries used by other pages
+      queryClient.invalidateQueries({ queryKey: ['all-rent-charges-tenancies', landlord?.id] })
+      queryClient.invalidateQueries({ queryKey: ['outstanding-charges-tenants', landlord?.id] })
+      queryClient.invalidateQueries({ queryKey: ['all-rent-charges-for-tenants', landlord?.id] })
+      queryClient.invalidateQueries({ queryKey: ['current-month-payments-tenancies', landlord?.id] })
     },
   })
 
@@ -199,6 +277,12 @@ export default function PaymentsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['payments', landlord?.id] })
+      queryClient.invalidateQueries({ queryKey: ['rent-charges', landlord?.id] })
+      queryClient.invalidateQueries({ queryKey: ['payment-allocations', landlord?.id] })
+      queryClient.invalidateQueries({ queryKey: ['all-rent-charges-tenancies', landlord?.id] })
+      queryClient.invalidateQueries({ queryKey: ['outstanding-charges-tenants', landlord?.id] })
+      queryClient.invalidateQueries({ queryKey: ['all-rent-charges-for-tenants', landlord?.id] })
+      queryClient.invalidateQueries({ queryKey: ['current-month-payments-tenancies', landlord?.id] })
     },
   })
 

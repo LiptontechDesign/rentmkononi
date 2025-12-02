@@ -257,6 +257,12 @@ export default function UnmatchedPaymentsPage() {
       queryClient.invalidateQueries({ queryKey: ['payment-allocations', landlord?.id] })
       queryClient.invalidateQueries({ queryKey: ['rent-charges', landlord?.id] })
       queryClient.invalidateQueries({ queryKey: ['payments', landlord?.id] })
+      // Also invalidate related queries used by other pages
+      queryClient.invalidateQueries({ queryKey: ['all-rent-charges-tenancies', landlord?.id] })
+      queryClient.invalidateQueries({ queryKey: ['outstanding-charges-tenants', landlord?.id] })
+      queryClient.invalidateQueries({ queryKey: ['all-rent-charges-for-tenants', landlord?.id] })
+      queryClient.invalidateQueries({ queryKey: ['current-month-payments-tenancies', landlord?.id] })
+      queryClient.invalidateQueries({ queryKey: ['outstanding-charges-units', landlord?.id] })
     },
   })
 

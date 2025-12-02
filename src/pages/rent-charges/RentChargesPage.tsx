@@ -251,7 +251,12 @@ export default function RentChargesPage() {
                 const count = Array.isArray(data) ? data.length : 0
                 if (count > 0) {
                   setGenerateMessage({ type: 'success', text: `Generated ${count} rent due entries for this month.` })
+                  // Invalidate all related queries so other pages update
                   queryClient.invalidateQueries({ queryKey: ['rent-charges', landlord?.id] })
+                  queryClient.invalidateQueries({ queryKey: ['all-rent-charges-tenancies', landlord?.id] })
+                  queryClient.invalidateQueries({ queryKey: ['outstanding-charges-tenants', landlord?.id] })
+                  queryClient.invalidateQueries({ queryKey: ['all-rent-charges-for-tenants', landlord?.id] })
+                  queryClient.invalidateQueries({ queryKey: ['outstanding-charges-units', landlord?.id] })
                 } else {
                   setGenerateMessage({ type: 'success', text: 'All tenancies already have rent due entries for this month.' })
                 }
