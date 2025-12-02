@@ -22,7 +22,11 @@ export default function AccountSettingsPage() {
   // Initialize form with landlord data
   useEffect(() => {
     if (landlord) {
-      setRentDueDay(landlord.default_rent_due_day?.toString() || '5')
+      if (landlord.default_rent_due_day != null) {
+        setRentDueDay(landlord.default_rent_due_day.toString())
+      } else {
+        setRentDueDay('')
+      }
     }
   }, [landlord])
 
@@ -115,15 +119,67 @@ export default function AccountSettingsPage() {
     mutationFn: async (newRentDueDay: number) => {
       if (!landlord) throw new Error('Landlord not loaded')
 
+      // 1) Update landlord default
       const { error } = await supabase
         .from('landlords')
         .update({ default_rent_due_day: newRentDueDay })
         .eq('id', landlord.id)
 
       if (error) throw error
+
+      // 2) Recalculate due dates for tenancies that use the default (no override)
+      const { data: defaultTenancies, error: tenanciesError } = await supabase
+        .from('tenancies')
+        .select('id')
+        .eq('landlord_id', landlord.id)
+        .is('rent_due_day', null)
+        .in('status', ['ACTIVE', 'NOTICE'])
+
+      if (tenanciesError) {
+        console.error('Error fetching tenancies for due-day recalculation:', tenanciesError)
+        return
+      }
+
+      if (!defaultTenancies || defaultTenancies.length === 0) return
+
+      const tenancyIds = defaultTenancies.map((t) => t.id as string)
+
+      const { data: charges, error: chargesError } = await supabase
+        .from('rent_charges')
+        .select('id, period, tenancy_id')
+        .eq('landlord_id', landlord.id)
+        .in('tenancy_id', tenancyIds)
+
+      if (chargesError) {
+        console.error('Error fetching rent charges for due-day recalculation:', chargesError)
+        return
+      }
+
+      if (!charges) return
+
+      for (const charge of charges as { id: string; period: string; tenancy_id: string }[]) {
+        const [year, month] = charge.period.split('-').map(Number)
+        if (!year || !month) continue
+
+        const dueDate = new Date(year, month - 1, Math.min(newRentDueDay, 28))
+        const dueDateStr = dueDate.toISOString().split('T')[0]!
+
+        const { error: updateError } = await supabase
+          .from('rent_charges')
+          .update({ due_date: dueDateStr })
+          .eq('id', charge.id)
+
+        if (updateError) {
+          console.error('Error updating rent charge due date:', updateError)
+        }
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['landlord'] })
+      queryClient.invalidateQueries({ queryKey: ['rent-charges', landlord?.id] })
+      queryClient.invalidateQueries({ queryKey: ['all-rent-charges-tenancies', landlord?.id] })
+      queryClient.invalidateQueries({ queryKey: ['outstanding-charges-tenants', landlord?.id] })
+      queryClient.invalidateQueries({ queryKey: ['all-rent-charges-for-tenants', landlord?.id] })
       setSaveSuccess(true)
       setTimeout(() => setSaveSuccess(false), 3000)
     },

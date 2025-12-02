@@ -292,7 +292,11 @@ export default function TenanciesPage() {
       const startDate = new Date(payload.startDate)
       const now = new Date()
       const currentPeriod = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
-      const dueDay = rentDueDay || 5
+      // Use tenancy override if set, otherwise landlord default; no hard-coded fallback
+      const effectiveDueDay = rentDueDay ?? landlord.default_rent_due_day
+      if (!effectiveDueDay) {
+        throw new Error('Default rent due day is not configured. Please set it in Settings.')
+      }
 
       const periodsNeeded: string[] = []
       const tempDate = new Date(startDate.getFullYear(), startDate.getMonth(), 1)
@@ -308,7 +312,7 @@ export default function TenanciesPage() {
       if (periodsNeeded.length > 0) {
         const newCharges = periodsNeeded.map(period => {
           const [year, month] = period.split('-').map(Number)
-          const dueDate = new Date(year!, month! - 1, Math.min(dueDay, 28))
+          const dueDate = new Date(year!, month! - 1, Math.min(effectiveDueDay, 28))
           return {
             landlord_id: landlord.id,
             tenancy_id: newTenancy.id,
@@ -387,10 +391,14 @@ export default function TenanciesPage() {
       const rentChanged = oldTenancy.monthly_rent_amount !== monthlyRent
       const dueDayChanged = oldTenancy.rent_due_day !== rentDueDay
       const statusChanged = oldTenancy.status !== payload.status
-      const dueDay = rentDueDay || 5
 
       // Recalculate if any of these changed
       if (startDateChanged || endDateChanged || rentChanged || dueDayChanged || statusChanged) {
+        // Use tenancy override if set, otherwise landlord default; no hard-coded fallback
+        const effectiveDueDay = rentDueDay ?? landlord.default_rent_due_day
+        if (!effectiveDueDay) {
+          throw new Error('Default rent due day is not configured. Please set it in Settings.')
+        }
         // Get existing rent charges for this tenancy
         const { data: existingCharges } = await supabase
           .from('rent_charges')
@@ -463,7 +471,7 @@ export default function TenanciesPage() {
         const newCharges: { landlord_id: string; tenancy_id: string; period: string; amount: number; balance: number; status: string; due_date: string }[] = []
         for (const period of periodsNeeded) {
           const [year, month] = period.split('-').map(Number)
-          const dueDate = new Date(year!, month! - 1, Math.min(dueDay, 28))
+          const dueDate = new Date(year!, month! - 1, Math.min(effectiveDueDay, 28))
           newCharges.push({
             landlord_id: landlord.id,
             tenancy_id: payload.id,
@@ -788,12 +796,17 @@ export default function TenanciesPage() {
                     max={28}
                     value={formState.rentDueDay}
                     onChange={(e) => setFormState((prev) => ({ ...prev, rentDueDay: e.target.value }))}
-                    placeholder={`Use default (${landlord?.default_rent_due_day || 5})`}
+                    placeholder={
+                      landlord?.default_rent_due_day != null
+                        ? `Use default (${landlord.default_rent_due_day})`
+                        : 'No default set - configure in Settings or set an override'
+                    }
                     disabled={isSaving}
                   />
                   <p className="text-xs text-muted-foreground">
-                    Leave empty to use your default ({landlord?.default_rent_due_day || 5}th of month).
-                    Set a value (1-28) to override for this tenancy only.
+                    {landlord?.default_rent_due_day != null
+                      ? `Leave empty to use your default (${landlord.default_rent_due_day}th of month).`
+                      : 'No default rent due day is set yet. Set it in Settings, or enter an override (1-28) here.'}
                   </p>
                 </div>
 
