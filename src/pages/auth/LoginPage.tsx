@@ -7,6 +7,8 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import { Spinner } from '@/components/ui/spinner'
+import { ArrowLeft } from 'lucide-react'
+import logoAsset from '@/assets/rentmkononi-logo.svg'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -44,18 +46,18 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-linear-to-br from-blue-50 to-indigo-100 p-4">
       <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <div className="flex flex-col items-center gap-3 mb-4">
-            <div className="flex items-center justify-center h-20 w-20 rounded-xl bg-white shadow-sm border">
+        <CardHeader className="text-center pt-0 pb-0">
+          <div className="flex flex-col items-center gap-0 mb-0">
+            <div className="flex items-center justify-center h-40 w-40">
               <img
-                src="/rentmkononi/Logo.png"
+                src={logoAsset}
                 alt="RentMkononi Logo"
-                className="h-16 w-16 object-contain"
+                className="app-logo h-36 w-36 object-contain"
               />
             </div>
-            <span className="text-2xl font-bold text-primary tracking-tight">RentMkononi</span>
+            <span className="text-2xl font-bold text-primary tracking-tight -mt-8">RentMkononi</span>
           </div>
-          <CardTitle className="text-xl">Welcome back</CardTitle>
+          <CardTitle className="text-xl -mt-1">Welcome back</CardTitle>
           <CardDescription>Sign in to manage your properties</CardDescription>
         </CardHeader>
         <CardContent>
@@ -145,8 +147,20 @@ export default function LoginPage() {
             Continue with Google
           </Button>
         </CardContent>
-        <CardFooter className="justify-center">
-          <p className="text-sm text-muted-foreground">
+        <CardFooter className="flex flex-col items-center gap-2 text-sm text-muted-foreground">
+          <Button
+            variant="ghost"
+            type="button"
+            className="flex items-center gap-2 text-muted-foreground hover:text-primary"
+            asChild
+          >
+            <Link to="/">
+              <ArrowLeft className="h-4 w-4" />
+              Back to Home
+            </Link>
+          </Button>
+
+          <p>
             Don't have an account?{' '}
             <Link to="/signup" className="text-primary hover:underline font-medium">
               Sign up

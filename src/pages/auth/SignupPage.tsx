@@ -7,6 +7,8 @@ import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Separator } from '@/components/ui/separator'
 import { Spinner } from '@/components/ui/spinner'
+import { ArrowLeft } from 'lucide-react'
+import logoAsset from '@/assets/rentmkononi-logo.svg'
 
 export default function SignupPage() {
   const [fullName, setFullName] = useState('')
@@ -61,26 +63,38 @@ export default function SignupPage() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-linear-to-br from-blue-50 to-indigo-100 p-4">
         <Card className="w-full max-w-md">
-          <CardHeader className="text-center">
-            <div className="flex flex-col items-center gap-3 mb-4">
-              <div className="flex items-center justify-center h-20 w-20 rounded-xl bg-white shadow-sm border">
+          <CardHeader className="text-center pt-0 pb-0">
+            <div className="flex flex-col items-center gap-0 mb-0">
+              <div className="flex items-center justify-center h-40 w-40">
                 <img
-                  src="/rentmkononi/Logo.png"
+                  src={logoAsset}
                   alt="RentMkononi Logo"
-                  className="h-16 w-16 object-contain"
+                  className="app-logo h-36 w-36 object-contain"
                 />
               </div>
-              <span className="text-2xl font-bold text-primary tracking-tight">RentMkononi</span>
+              <span className="text-2xl font-bold text-primary tracking-tight -mt-8">RentMkononi</span>
             </div>
-            <CardTitle className="text-xl text-green-600">Check your email</CardTitle>
+            <CardTitle className="text-xl text-green-600 -mt-1">Check your email</CardTitle>
             <CardDescription>
               We've sent a confirmation link to <strong>{email}</strong>. 
               Please click the link to verify your account.
             </CardDescription>
           </CardHeader>
-          <CardContent className="text-center">
+          <CardContent className="text-center space-y-4">
             <Button onClick={() => navigate('/login')} variant="outline">
               Back to Login
+            </Button>
+
+            <Button
+              variant="ghost"
+              type="button"
+              className="flex items-center justify-center gap-2 text-muted-foreground hover:text-primary mx-auto"
+              asChild
+            >
+              <Link to="/">
+                <ArrowLeft className="h-4 w-4" />
+                Back to Home
+              </Link>
             </Button>
           </CardContent>
         </Card>
@@ -91,18 +105,18 @@ export default function SignupPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-linear-to-br from-blue-50 to-indigo-100 p-4">
       <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <div className="flex flex-col items-center gap-3 mb-4">
-            <div className="flex items-center justify-center h-20 w-20 rounded-xl bg-white shadow-sm border">
+        <CardHeader className="text-center pt-0 pb-0">
+          <div className="flex flex-col items-center gap-0 mb-0">
+            <div className="flex items-center justify-center h-40 w-40">
               <img
-                src="/rentmkononi/Logo.png"
+                src={logoAsset}
                 alt="RentMkononi Logo"
-                className="h-16 w-16 object-contain"
+                className="app-logo h-36 w-36 object-contain"
               />
             </div>
-            <span className="text-2xl font-bold text-primary tracking-tight">RentMkononi</span>
+            <span className="text-2xl font-bold text-primary tracking-tight -mt-8">RentMkononi</span>
           </div>
-          <CardTitle className="text-xl">Create your account</CardTitle>
+          <CardTitle className="text-xl -mt-1">Create your account</CardTitle>
           <CardDescription>Start managing your properties today</CardDescription>
         </CardHeader>
         <CardContent>
@@ -217,8 +231,20 @@ export default function SignupPage() {
             Continue with Google
           </Button>
         </CardContent>
-        <CardFooter className="justify-center">
-          <p className="text-sm text-muted-foreground">
+        <CardFooter className="flex flex-col items-center gap-2 text-sm text-muted-foreground">
+          <Button
+            variant="ghost"
+            type="button"
+            className="flex items-center gap-2 text-muted-foreground hover:text-primary"
+            asChild
+          >
+            <Link to="/">
+              <ArrowLeft className="h-4 w-4" />
+              Back to Home
+            </Link>
+          </Button>
+
+          <p>
             Already have an account?{' '}
             <Link to="/login" className="text-primary hover:underline font-medium">
               Sign in

@@ -1,5 +1,6 @@
 import { Outlet } from 'react-router-dom'
 import { Sidebar } from './Sidebar'
+import logoAsset from '@/assets/rentmkononi-logo.svg'
 
 export function MainLayout() {
   return (
@@ -14,9 +15,9 @@ export function MainLayout() {
         {/* Mobile header - can be expanded later */}
         <header className="flex h-16 items-center gap-3 border-b bg-card px-4 md:hidden">
           <img 
-            src="/rentmkononi/Logo.png" 
+            src={logoAsset} 
             alt="RentMkononi Logo" 
-            className="h-10 w-10 object-contain rounded"
+            className="app-logo h-16 w-16 object-contain"
           />
           <span className="text-lg font-bold text-primary">RentMkononi</span>
         </header>

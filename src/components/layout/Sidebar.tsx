@@ -1,6 +1,7 @@
-import { Link, useLocation } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/contexts/AuthContext'
+import logoAsset from '@/assets/rentmkononi-logo.svg'
 import {
   Building2,
   Users,
@@ -36,16 +37,17 @@ const adminNav = [
 
 export function Sidebar() {
   const location = useLocation()
+  const navigate = useNavigate()
   const { landlord, signOut, isAdmin } = useAuth()
 
   return (
     <div className="flex h-full flex-col bg-card border-r">
       {/* Logo */}
-      <div className="flex h-16 items-center gap-3 px-4 border-b">
+      <div className="flex h-24 items-center gap-3 px-4 border-b">
         <img 
-          src="/rentmkononi/Logo.png" 
+          src={logoAsset} 
           alt="RentMkononi Logo" 
-          className="h-10 w-10 object-contain rounded"
+          className="app-logo h-16 w-16 object-contain"
         />
         <span className="text-lg font-bold text-primary">RentMkononi</span>
       </div>
@@ -144,7 +146,10 @@ export function Sidebar() {
           variant="outline"
           size="sm"
           className="w-full justify-start"
-          onClick={signOut}
+          onClick={async () => {
+            await signOut()
+            navigate('/')
+          }}
         >
           <LogOut className="mr-2 h-4 w-4" />
           Sign out

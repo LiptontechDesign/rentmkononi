@@ -1,6 +1,7 @@
 import { createBrowserRouter, Navigate } from 'react-router-dom'
 import { MainLayout } from '@/components/layout/MainLayout'
 import { ProtectedRoute } from '@/components/ProtectedRoute'
+import LandingPage from '@/pages/LandingPage'
 
 // Auth pages
 import LoginPage from '@/pages/auth/LoginPage'
@@ -8,6 +9,13 @@ import SignupPage from '@/pages/auth/SignupPage'
 import AuthCallbackPage from '@/pages/auth/AuthCallbackPage'
 import ForgotPasswordPage from '@/pages/auth/ForgotPasswordPage'
 import ResetPasswordPage from '@/pages/auth/ResetPasswordPage'
+
+// Public pages
+import PrivacyPolicyPage from '@/pages/legal/PrivacyPolicyPage'
+import TermsPage from '@/pages/legal/TermsPage'
+import AboutPage from '@/pages/company/AboutPage'
+import BlogPage from '@/pages/company/BlogPage'
+import CareersPage from '@/pages/company/CareersPage'
 
 // Main pages
 import DashboardPage from '@/pages/dashboard/DashboardPage'
@@ -38,6 +46,10 @@ const basePath = import.meta.env.BASE_URL.replace(/\/$/, '')
 export const router = createBrowserRouter([
   // Public routes
   {
+    path: '/',
+    element: <LandingPage />,
+  },
+  {
     path: '/login',
     element: <LoginPage />,
   },
@@ -57,10 +69,29 @@ export const router = createBrowserRouter([
     path: '/reset-password',
     element: <ResetPasswordPage />,
   },
+  {
+    path: '/privacy',
+    element: <PrivacyPolicyPage />,
+  },
+  {
+    path: '/terms',
+    element: <TermsPage />,
+  },
+  {
+    path: '/about',
+    element: <AboutPage />,
+  },
+  {
+    path: '/blog',
+    element: <BlogPage />,
+  },
+  {
+    path: '/careers',
+    element: <CareersPage />,
+  },
 
   // Protected routes with main layout
   {
-    path: '/',
     element: (
       <ProtectedRoute>
         <MainLayout />
@@ -68,47 +99,43 @@ export const router = createBrowserRouter([
     ),
     children: [
       {
-        index: true,
-        element: <Navigate to="/dashboard" replace />,
-      },
-      {
-        path: 'dashboard',
+        path: '/dashboard',
         element: <DashboardPage />,
       },
       {
-        path: 'properties',
+        path: '/properties',
         element: <PropertiesPage />,
       },
       {
-        path: 'properties/:id',
+        path: '/properties/:id',
         element: <PropertyDetailPage />,
       },
       {
-        path: 'tenants',
+        path: '/tenants',
         element: <TenantsPage />,
       },
       {
-        path: 'tenancies',
+        path: '/tenancies',
         element: <TenanciesPage />,
       },
       {
-        path: 'payments',
+        path: '/payments',
         element: <PaymentsPage />,
       },
       {
-        path: 'rent-charges',
+        path: '/rent-charges',
         element: <RentChargesPage />,
       },
       {
-        path: 'unmatched-payments',
+        path: '/unmatched-payments',
         element: <UnmatchedPaymentsPage />,
       },
       {
-        path: 'settings/mpesa',
+        path: '/settings/mpesa',
         element: <MpesaSettingsPage />,
       },
       {
-        path: 'settings/account',
+        path: '/settings/account',
         element: <AccountSettingsPage />,
       },
     ],

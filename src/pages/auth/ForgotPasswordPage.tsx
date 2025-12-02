@@ -6,6 +6,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Spinner } from '@/components/ui/spinner'
+import { ArrowLeft } from 'lucide-react'
+import logoAsset from '@/assets/rentmkononi-logo.svg'
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('')
@@ -43,11 +45,11 @@ export default function ForgotPasswordPage() {
         <Card className="w-full max-w-md">
           <CardHeader className="text-center">
             <div className="flex flex-col items-center gap-3 mb-4">
-              <div className="flex items-center justify-center h-20 w-20 rounded-xl bg-white shadow-sm border">
+              <div className="flex items-center justify-center h-24 w-24">
                 <img
-                  src="/rentmkononi/Logo.png"
+                  src={logoAsset}
                   alt="RentMkononi Logo"
-                  className="h-16 w-16 object-contain"
+                  className="app-logo h-20 w-20 object-contain"
                 />
               </div>
               <span className="text-2xl font-bold text-primary tracking-tight">RentMkononi</span>
@@ -58,10 +60,22 @@ export default function ForgotPasswordPage() {
               link. Please check your inbox.
             </CardDescription>
           </CardHeader>
-          <CardFooter className="justify-center">
+          <CardFooter className="flex flex-col items-center gap-2 text-sm text-muted-foreground">
             <Link to="/login" className="text-primary hover:underline font-medium">
               Back to login
             </Link>
+
+            <Button
+              variant="ghost"
+              type="button"
+              className="flex items-center gap-2 text-muted-foreground hover:text-primary"
+              asChild
+            >
+              <Link to="/">
+                <ArrowLeft className="h-4 w-4" />
+                Back to Home
+              </Link>
+            </Button>
           </CardFooter>
         </Card>
       </div>
@@ -73,11 +87,11 @@ export default function ForgotPasswordPage() {
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <div className="flex flex-col items-center gap-3 mb-4">
-            <div className="flex items-center justify-center h-20 w-20 rounded-xl bg-white shadow-sm border">
+            <div className="flex items-center justify-center h-28 w-28">
               <img
-                src="/rentmkononi/Logo.png"
+                src={logoAsset}
                 alt="RentMkononi Logo"
-                className="h-16 w-16 object-contain"
+                className="app-logo h-24 w-24 object-contain"
               />
             </div>
             <span className="text-2xl font-bold text-primary tracking-tight">RentMkononi</span>
@@ -113,13 +127,27 @@ export default function ForgotPasswordPage() {
             </Button>
           </form>
         </CardContent>
-        <CardFooter className="justify-between text-sm">
-          <Link to="/login" className="text-primary hover:underline">
-            Back to login
-          </Link>
-          <Link to="/signup" className="text-primary hover:underline">
-            Create account
-          </Link>
+        <CardFooter className="flex flex-col gap-2 text-sm">
+          <div className="flex w-full justify-between">
+            <Link to="/login" className="text-primary hover:underline">
+              Back to login
+            </Link>
+            <Link to="/signup" className="text-primary hover:underline">
+              Create account
+            </Link>
+          </div>
+
+          <Button
+            variant="ghost"
+            type="button"
+            className="flex items-center gap-2 text-muted-foreground hover:text-primary self-center"
+            asChild
+          >
+            <Link to="/">
+              <ArrowLeft className="h-4 w-4" />
+              Back to Home
+            </Link>
+          </Button>
         </CardFooter>
       </Card>
     </div>
