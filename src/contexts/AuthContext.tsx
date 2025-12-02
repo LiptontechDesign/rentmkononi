@@ -24,19 +24,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [landlord, setLandlord] = useState<Landlord | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
-  // Fetch landlord profile
-  const fetchLandlord = async (userId: string) => {
-    const { data, error } = await supabase
-      .from('landlords')
-      .select('*')
-      .eq('id', userId)
-      .single()
+  // Fetch landlord profile with timeout
+  const fetchLandlord = async (userId: string): Promise<Landlord | null> => {
+    console.log('[Auth] fetchLandlord: starting query for userId:', userId)
     
-    if (error) {
-      console.error('Error fetching landlord:', error)
+    // Create a timeout promise
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error('Supabase query timed out after 5s')), 5000)
+    })
+
+    try {
+      // Race between the query and timeout
+      const result = await Promise.race([
+        supabase
+          .from('landlords')
+          .select('*')
+          .eq('id', userId)
+          .single(),
+        timeoutPromise
+      ]) as { data: Landlord | null; error: { message: string } | null }
+
+      console.log('[Auth] fetchLandlord: query completed', { 
+        hasData: !!result.data, 
+        error: result.error?.message 
+      })
+
+      if (result.error) {
+        console.error('[Auth] fetchLandlord error:', result.error.message)
+        return null
+      }
+      return result.data
+    } catch (err) {
+      console.error('[Auth] fetchLandlord exception:', err)
       return null
     }
-    return data
   }
 
   // Refresh landlord data
@@ -49,61 +70,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let isMounted = true
+    let initialSessionProcessed = false
 
-    const initAuth = async () => {
-      try {
-        const { data: { session }, error } = await supabase.auth.getSession()
-
-        if (!isMounted) return
-
-        if (error) {
-          console.error('Error getting initial session:', error)
-        }
-
-        setSession(session)
-        setUser(session?.user ?? null)
-
-        if (session?.user) {
-          const landlordData = await fetchLandlord(session.user.id)
-          if (!isMounted) return
-          setLandlord(landlordData)
-        } else {
-          setLandlord(null)
-        }
-      } catch (err) {
-        if (!isMounted) return
-        console.error('Unexpected error getting initial session:', err)
-        setSession(null)
-        setUser(null)
-        setLandlord(null)
-      } finally {
-        if (isMounted) {
-          setIsLoading(false)
-        }
-      }
-    }
-
-    void initAuth()
-
-    // Listen for auth changes (login/logout in this tab)
+    // Use onAuthStateChange as the single source of truth (recommended by Supabase)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (!isMounted) return
 
-        // Mark event as intentionally unused to satisfy TypeScript
-        void event
+        console.log('[Auth] onAuthStateChange:', event, session?.user?.email ?? 'no session')
 
+        // Update session and user state immediately
         setSession(session)
         setUser(session?.user ?? null)
-        
-        if (session?.user) {
+
+        // IMPORTANT: On page refresh, SIGNED_IN fires before auth is ready, then INITIAL_SESSION fires after.
+        // We should only fetch landlord data on:
+        // 1. INITIAL_SESSION (page load/refresh - auth is ready)
+        // 2. SIGNED_IN after initial session (actual login action)
+        // 3. TOKEN_REFRESHED (token was refreshed)
+        const shouldFetchLandlord = 
+          event === 'INITIAL_SESSION' || 
+          event === 'TOKEN_REFRESHED' ||
+          (event === 'SIGNED_IN' && initialSessionProcessed)
+
+        if (event === 'INITIAL_SESSION') {
+          initialSessionProcessed = true
+        }
+
+        if (session?.user && shouldFetchLandlord) {
+          console.log('[Auth] Fetching landlord for event:', event)
           const landlordData = await fetchLandlord(session.user.id)
           if (!isMounted) return
+          console.log('[Auth] Landlord result:', landlordData ? landlordData.email : 'not found')
           setLandlord(landlordData)
-        } else {
+        } else if (!session) {
           setLandlord(null)
         }
-        setIsLoading(false)
+
+        // Mark loading complete after INITIAL_SESSION (the definitive initial state)
+        if (event === 'INITIAL_SESSION' && isMounted) {
+          setIsLoading(false)
+        }
       }
     )
 
