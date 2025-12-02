@@ -270,27 +270,78 @@ export default function TenanciesPage() {
         throw new Error('Rent due day must be between 1 and 28')
       }
 
-      const { error } = await supabase.from('tenancies').insert({
-        landlord_id: landlord.id,
-        tenant_id: payload.tenantId,
-        unit_id: payload.unitId,
-        start_date: payload.startDate,
-        end_date: payload.endDate || null,
-        monthly_rent_amount: monthlyRent,
-        deposit_required: deposit,
-        rent_due_day: rentDueDay,
-        status: payload.status,
-      })
+      // Create the tenancy
+      const { data: newTenancy, error } = await supabase
+        .from('tenancies')
+        .insert({
+          landlord_id: landlord.id,
+          tenant_id: payload.tenantId,
+          unit_id: payload.unitId,
+          start_date: payload.startDate,
+          end_date: payload.endDate || null,
+          monthly_rent_amount: monthlyRent,
+          deposit_required: deposit,
+          rent_due_day: rentDueDay,
+          status: payload.status,
+        })
+        .select()
+        .single()
       if (error) throw error
+
+      // Auto-generate rent charges from start_date to current month
+      const startDate = new Date(payload.startDate)
+      const now = new Date()
+      const currentPeriod = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+      const dueDay = rentDueDay || 5
+
+      const periodsNeeded: string[] = []
+      const tempDate = new Date(startDate.getFullYear(), startDate.getMonth(), 1)
+      while (tempDate <= now) {
+        const period = `${tempDate.getFullYear()}-${String(tempDate.getMonth() + 1).padStart(2, '0')}`
+        if (period <= currentPeriod) {
+          periodsNeeded.push(period)
+        }
+        tempDate.setMonth(tempDate.getMonth() + 1)
+      }
+
+      // Create rent charges for all needed periods
+      if (periodsNeeded.length > 0) {
+        const newCharges = periodsNeeded.map(period => {
+          const [year, month] = period.split('-').map(Number)
+          const dueDate = new Date(year!, month! - 1, Math.min(dueDay, 28))
+          return {
+            landlord_id: landlord.id,
+            tenancy_id: newTenancy.id,
+            period,
+            amount: monthlyRent,
+            balance: monthlyRent,
+            status: 'UNPAID',
+            due_date: dueDate.toISOString().split('T')[0]!,
+          }
+        })
+
+        const { error: chargesError } = await supabase
+          .from('rent_charges')
+          .insert(newCharges)
+        if (chargesError) {
+          console.error('Error creating rent charges:', chargesError)
+          // Don't throw - tenancy was created successfully
+        }
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tenancies', landlord?.id] })
+      queryClient.invalidateQueries({ queryKey: ['rent-charges', landlord?.id] })
+      queryClient.invalidateQueries({ queryKey: ['all-rent-charges-tenancies', landlord?.id] })
+      queryClient.invalidateQueries({ queryKey: ['outstanding-charges-tenants', landlord?.id] })
+      queryClient.invalidateQueries({ queryKey: ['all-rent-charges-for-tenants', landlord?.id] })
     },
   })
 
   const updateMutation = useMutation({
     mutationFn: async (payload: TenancyFormState) => {
       if (!payload.id) throw new Error('Missing tenancy id')
+      if (!landlord) throw new Error('Landlord profile not loaded')
 
       const monthlyRent = parseInt(payload.monthlyRent, 10)
       const deposit = payload.deposit ? parseInt(payload.deposit, 10) : 0
@@ -306,6 +357,15 @@ export default function TenanciesPage() {
         throw new Error('Rent due day must be between 1 and 28')
       }
 
+      // Get the old tenancy to compare what changed
+      const { data: oldTenancy, error: fetchError } = await supabase
+        .from('tenancies')
+        .select('*')
+        .eq('id', payload.id)
+        .single()
+      if (fetchError) throw fetchError
+
+      // Update the tenancy
       const { error } = await supabase
         .from('tenancies')
         .update({
@@ -320,9 +380,139 @@ export default function TenanciesPage() {
         })
         .eq('id', payload.id)
       if (error) throw error
+
+      // Check if start_date or monthly_rent changed - if so, recalculate rent charges
+      const startDateChanged = oldTenancy.start_date !== payload.startDate
+      const rentChanged = oldTenancy.monthly_rent_amount !== monthlyRent
+      const dueDay = rentDueDay || 5
+
+      if (startDateChanged || rentChanged) {
+        // Get existing rent charges for this tenancy
+        const { data: existingCharges } = await supabase
+          .from('rent_charges')
+          .select('*')
+          .eq('tenancy_id', payload.id)
+          .eq('landlord_id', landlord.id)
+
+        // Get existing payments for this tenancy
+        const { data: existingPayments } = await supabase
+          .from('payments')
+          .select('id, amount')
+          .eq('tenancy_id', payload.id)
+          .eq('landlord_id', landlord.id)
+
+        // Calculate total payments
+        const totalPaid = (existingPayments || []).reduce((sum, p) => sum + p.amount, 0)
+
+        // Calculate which months need rent charges (from start_date to current month)
+        const startDate = new Date(payload.startDate)
+        const now = new Date()
+        const currentPeriod = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+        
+        const periodsNeeded: string[] = []
+        const tempDate = new Date(startDate.getFullYear(), startDate.getMonth(), 1)
+        while (tempDate <= now) {
+          const period = `${tempDate.getFullYear()}-${String(tempDate.getMonth() + 1).padStart(2, '0')}`
+          if (period <= currentPeriod) {
+            periodsNeeded.push(period)
+          }
+          tempDate.setMonth(tempDate.getMonth() + 1)
+        }
+
+        // Delete all existing allocations for this tenancy's charges
+        if (existingCharges && existingCharges.length > 0) {
+          const chargeIds = existingCharges.map(c => c.id)
+          await supabase
+            .from('payment_allocations')
+            .delete()
+            .in('rent_charge_id', chargeIds)
+        }
+
+        // Delete all existing rent charges for this tenancy
+        await supabase
+          .from('rent_charges')
+          .delete()
+          .eq('tenancy_id', payload.id)
+          .eq('landlord_id', landlord.id)
+
+        // Create new rent charges for all needed periods
+        const newCharges: { landlord_id: string; tenancy_id: string; period: string; amount: number; balance: number; status: string; due_date: string }[] = []
+        for (const period of periodsNeeded) {
+          const [year, month] = period.split('-').map(Number)
+          const dueDate = new Date(year!, month! - 1, Math.min(dueDay, 28))
+          newCharges.push({
+            landlord_id: landlord.id,
+            tenancy_id: payload.id,
+            period,
+            amount: monthlyRent,
+            balance: monthlyRent, // Will be updated after allocation
+            status: 'UNPAID',
+            due_date: dueDate.toISOString().split('T')[0]!,
+          })
+        }
+
+        if (newCharges.length > 0) {
+          const { data: insertedCharges, error: insertError } = await supabase
+            .from('rent_charges')
+            .insert(newCharges)
+            .select()
+          if (insertError) throw insertError
+
+          // Auto-allocate payments to the new charges (oldest first)
+          let remainingPayment = totalPaid
+          const sortedCharges = (insertedCharges || []).sort((a, b) => a.period.localeCompare(b.period))
+          
+          for (const charge of sortedCharges) {
+            if (remainingPayment <= 0) break
+
+            const allocateAmount = Math.min(remainingPayment, charge.amount)
+            const newBalance = charge.amount - allocateAmount
+            const newStatus = newBalance <= 0 ? 'PAID' : newBalance < charge.amount ? 'PARTIAL' : 'UNPAID'
+
+            // Update charge balance
+            await supabase
+              .from('rent_charges')
+              .update({ balance: newBalance, status: newStatus })
+              .eq('id', charge.id)
+
+            // Create allocation record (link to first payment for simplicity)
+            if (existingPayments && existingPayments.length > 0) {
+              await supabase
+                .from('payment_allocations')
+                .insert({
+                  landlord_id: landlord.id,
+                  payment_id: existingPayments[0]!.id,
+                  rent_charge_id: charge.id,
+                  allocated_amount: allocateAmount,
+                })
+            }
+
+            remainingPayment -= allocateAmount
+          }
+
+          // Update payment matched status
+          if (existingPayments) {
+            for (const payment of existingPayments) {
+              const isMatched = remainingPayment <= 0
+              await supabase
+                .from('payments')
+                .update({ is_matched: isMatched })
+                .eq('id', payment.id)
+            }
+          }
+        }
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tenancies', landlord?.id] })
+      queryClient.invalidateQueries({ queryKey: ['rent-charges', landlord?.id] })
+      queryClient.invalidateQueries({ queryKey: ['payments', landlord?.id] })
+      queryClient.invalidateQueries({ queryKey: ['payment-allocations', landlord?.id] })
+      queryClient.invalidateQueries({ queryKey: ['all-rent-charges-tenancies', landlord?.id] })
+      queryClient.invalidateQueries({ queryKey: ['outstanding-charges-tenants', landlord?.id] })
+      queryClient.invalidateQueries({ queryKey: ['all-rent-charges-for-tenants', landlord?.id] })
+      queryClient.invalidateQueries({ queryKey: ['all-payments-for-tenants', landlord?.id] })
+      queryClient.invalidateQueries({ queryKey: ['all-allocations-for-tenants', landlord?.id] })
     },
   })
 
