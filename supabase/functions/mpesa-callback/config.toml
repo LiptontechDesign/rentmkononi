@@ -1,0 +1,5 @@
+# M-Pesa callback function configuration
+# JWT verification is disabled because M-Pesa callbacks don't include auth tokens
+
+[functions.mpesa-callback]
+verify_jwt = false
