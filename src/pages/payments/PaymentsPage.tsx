@@ -306,6 +306,46 @@ export default function PaymentsPage() {
                 </div>
               )}
 
+              {/* Step 1: Select tenancy first */}
+              <div className="space-y-2">
+                <Label htmlFor="tenancy">Select tenancy</Label>
+                <select
+                  id="tenancy"
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                  value={formState.tenancyId}
+                  onChange={(e) => {
+                    const selectedTenancyId = e.target.value
+                    const selectedTenancy = tenancyMap.get(selectedTenancyId)
+                    
+                    setFormState((prev) => ({
+                      ...prev,
+                      tenancyId: selectedTenancyId,
+                      // Auto-fill amount with monthly rent from selected tenancy
+                      amount: selectedTenancy ? selectedTenancy.monthly_rent_amount.toString() : prev.amount,
+                    }))
+                  }}
+                  disabled={isSaving || isLoadingTenancies}
+                >
+                  <option value="">Select tenant / unit...</option>
+                  {(tenancies || []).map((t) => {
+                    const tenant = tenantMap.get(t.tenant_id)
+                    const unit = unitMap.get(t.unit_id)
+                    const property = unit ? propertyMap.get(unit.property_id) : undefined
+
+                    return (
+                      <option key={t.id} value={t.id}>
+                        {tenant?.full_name || 'Tenant'} - {property?.property_name || 'Property'}
+                        {unit && ` (${unit.unit_code})`} - {formatKES(t.monthly_rent_amount)}/month
+                      </option>
+                    )
+                  })}
+                </select>
+                <p className="text-xs text-muted-foreground">
+                  Selecting a tenancy will auto-fill the amount with the monthly rent. You can adjust it if needed.
+                </p>
+              </div>
+
+              {/* Step 2: Amount, date, and payment method */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="amount">Amount paid (KES)</Label>
@@ -319,6 +359,9 @@ export default function PaymentsPage() {
                     required
                     disabled={isSaving}
                   />
+                  <p className="text-xs text-muted-foreground">
+                    You can edit this amount for partial payments or different amounts.
+                  </p>
                 </div>
 
                 <div className="space-y-2">
@@ -363,36 +406,6 @@ export default function PaymentsPage() {
                   placeholder="Bank slip number, cheque number, etc. (optional)"
                   disabled={isSaving}
                 />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="tenancy">Linked tenancy (optional)</Label>
-                <select
-                  id="tenancy"
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                  value={formState.tenancyId}
-                  onChange={(e) =>
-                    setFormState((prev) => ({
-                      ...prev,
-                      tenancyId: e.target.value,
-                    }))
-                  }
-                  disabled={isSaving || isLoadingTenancies}
-                >
-                  <option value="">Do not link for now</option>
-                  {(tenancies || []).map((t) => {
-                    const tenant = tenantMap.get(t.tenant_id)
-                    const unit = unitMap.get(t.unit_id)
-                    const property = unit ? propertyMap.get(unit.property_id) : undefined
-
-                    return (
-                      <option key={t.id} value={t.id}>
-                        {tenant?.full_name || 'Tenant'} - {property?.property_name || 'Property'}
-                        {unit && ` (${unit.unit_code})`}
-                      </option>
-                    )
-                  })}
-                </select>
               </div>
 
               <div className="flex justify-end gap-2 pt-2">
