@@ -31,6 +31,10 @@ function PlaceholderPage({ title }: { title: string }) {
   )
 }
 
+// Ensure routing works correctly when the app is served from a sub-path
+// like /rentmkononi/ on GitHub Pages.
+const basePath = import.meta.env.BASE_URL.replace(/\/$/, '')
+
 export const router = createBrowserRouter([
   // Public routes
   {
@@ -151,4 +155,6 @@ export const router = createBrowserRouter([
     path: '*',
     element: <Navigate to="/dashboard" replace />,
   },
-])
+], {
+  basename: basePath,
+})
