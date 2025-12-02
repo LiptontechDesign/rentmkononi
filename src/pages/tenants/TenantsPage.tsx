@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
-import type { Tenant, Tenancy, Unit, Property, RentCharge } from '@/types/database'
+import type { Tenant, Tenancy, Unit, Property, RentCharge, Payment, PaymentAllocation } from '@/types/database'
 import { useAuth } from '@/contexts/AuthContext'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -142,6 +142,38 @@ export default function TenantsPage() {
     },
   })
 
+  // Payments for calculating credit balance
+  const { data: allPayments } = useQuery({
+    queryKey: ['all-payments-for-tenants', landlord?.id],
+    enabled: !!landlord,
+    queryFn: async () => {
+      if (!landlord) return []
+      const { data, error } = await supabase
+        .from('payments')
+        .select('id, tenancy_id, amount')
+        .eq('landlord_id', landlord.id)
+
+      if (error) throw error
+      return data as Pick<Payment, 'id' | 'tenancy_id' | 'amount'>[]
+    },
+  })
+
+  // Payment allocations for calculating how much has been applied
+  const { data: allAllocations } = useQuery({
+    queryKey: ['all-allocations-for-tenants', landlord?.id],
+    enabled: !!landlord,
+    queryFn: async () => {
+      if (!landlord) return []
+      const { data, error } = await supabase
+        .from('payment_allocations')
+        .select('id, payment_id, allocated_amount')
+        .eq('landlord_id', landlord.id)
+
+      if (error) throw error
+      return data as Pick<PaymentAllocation, 'id' | 'payment_id' | 'allocated_amount'>[]
+    },
+  })
+
   // Build lookup maps
   const unitById = useMemo(() => {
     const map = new Map<string, Pick<Unit, 'id' | 'property_id' | 'unit_code'>>()
@@ -202,6 +234,50 @@ export default function TenantsPage() {
     return total
   }, [outstandingCharges, tenancyById])
 
+  // Calculate credit (unallocated payment amount) per tenant
+  const creditByTenantId = useMemo(() => {
+    const credit: Record<string, number> = {}
+
+    // Build payment ID to tenancy ID map
+    const paymentTenancyMap = new Map<string, string>()
+    ;(allPayments || []).forEach((p) => {
+      if (p.tenancy_id) paymentTenancyMap.set(p.id, p.tenancy_id)
+    })
+
+    // Sum total payments per tenant
+    const totalPaidByTenantId: Record<string, number> = {}
+    ;(allPayments || []).forEach((p) => {
+      if (!p.tenancy_id) return
+      const tenancy = tenancyById.get(p.tenancy_id)
+      if (!tenancy) return
+      const tenantId = tenancy.tenant_id
+      totalPaidByTenantId[tenantId] = (totalPaidByTenantId[tenantId] || 0) + p.amount
+    })
+
+    // Sum total allocated per tenant
+    const totalAllocatedByTenantId: Record<string, number> = {}
+    ;(allAllocations || []).forEach((a) => {
+      const tenancyId = paymentTenancyMap.get(a.payment_id)
+      if (!tenancyId) return
+      const tenancy = tenancyById.get(tenancyId)
+      if (!tenancy) return
+      const tenantId = tenancy.tenant_id
+      totalAllocatedByTenantId[tenantId] = (totalAllocatedByTenantId[tenantId] || 0) + a.allocated_amount
+    })
+
+    // Credit = paid - allocated (if positive)
+    Object.keys(totalPaidByTenantId).forEach((tenantId) => {
+      const paid = totalPaidByTenantId[tenantId] || 0
+      const allocated = totalAllocatedByTenantId[tenantId] || 0
+      const remaining = paid - allocated
+      if (remaining > 0) {
+        credit[tenantId] = remaining
+      }
+    })
+
+    return credit
+  }, [allPayments, allAllocations, tenancyById])
+
   // Compute rent status per tenant
   type RentStatusInfo = {
     type: 'paid' | 'due' | 'behind' | 'ahead' | 'no_charges'
@@ -210,6 +286,7 @@ export default function TenantsPage() {
     monthsBehind?: number
     monthsAhead?: number
     firstUnpaidPeriod?: string
+    creditAmount?: number
   }
 
   const rentStatusByTenantId = useMemo(() => {
@@ -252,9 +329,6 @@ export default function TenantsPage() {
       // Sort by period
       const sorted = [...charges].sort((a, b) => a.period.localeCompare(b.period))
 
-      // Calculate total outstanding
-      const totalOwed = sorted.reduce((sum, c) => sum + c.balance, 0)
-
       // Find latest fully paid period
       let paidUpToPeriod: string | null = null
       for (const c of sorted) {
@@ -278,6 +352,56 @@ export default function TenantsPage() {
         return c.period > currentPeriod && c.status === 'PAID' && c.balance === 0
       })
 
+      // Get advance (unallocated payment) for this tenant
+      const tenantAdvance = creditByTenantId[tenantId] || 0
+
+      // Helper to calculate future "paid up to" period based on advance
+      const calculatePaidUpToWithAdvance = (basePeriod: string): { period: string; remainder: number } => {
+        const tenancy = activeTenancyByTenantId.get(tenantId)
+        const monthlyRent = tenancy?.monthly_rent_amount || 0
+        
+        if (tenantAdvance <= 0 || monthlyRent <= 0) {
+          return { period: basePeriod, remainder: 0 }
+        }
+
+        // How many full months does the advance cover?
+        const monthsCovered = Math.floor(tenantAdvance / monthlyRent)
+        const remainder = tenantAdvance % monthlyRent
+
+        if (monthsCovered === 0) {
+          return { period: basePeriod, remainder: tenantAdvance }
+        }
+
+        // Add months to base period
+        const [year, month] = basePeriod.split('-').map(Number)
+        const baseDate = new Date(year!, month! - 1, 1) // month is 0-indexed
+        baseDate.setMonth(baseDate.getMonth() + monthsCovered)
+        
+        const newYear = baseDate.getFullYear()
+        const newMonth = String(baseDate.getMonth() + 1).padStart(2, '0')
+        
+        return { period: `${newYear}-${newMonth}`, remainder }
+      }
+
+      // Helper to format the status label with advance info
+      const formatPaidUpToWithAdvance = (basePeriod: string) => {
+        const { period: paidUpTo, remainder } = calculatePaidUpToWithAdvance(basePeriod)
+        
+        if (paidUpTo === basePeriod && remainder === 0) {
+          // No advance
+          return `Paid up to ${formatPeriod(basePeriod)}`
+        } else if (paidUpTo === basePeriod && remainder > 0) {
+          // Has partial advance that doesn't cover a full month
+          return `Paid up to ${formatPeriod(basePeriod)} (${formatKES(remainder)} advance)`
+        } else if (remainder > 0) {
+          // Covers multiple months + partial
+          return `Paid up to ${formatPeriod(paidUpTo)} (${formatKES(remainder)} advance toward next)`
+        } else {
+          // Covers exact months
+          return `Paid up to ${formatPeriod(paidUpTo)}`
+        }
+      }
+
       // Determine status
       if (overdueCharges.length > 0) {
         // Behind - has overdue unpaid charges
@@ -288,23 +412,29 @@ export default function TenantsPage() {
           label: `${monthsBehind} month${monthsBehind > 1 ? 's' : ''} behind (${formatKES(overdueTotal)} owed since ${formatPeriod(firstUnpaid.period)})`,
           monthsBehind,
           firstUnpaidPeriod: firstUnpaid.period,
+          creditAmount: tenantAdvance,
         }
       } else if (futurePaidCharges.length > 0) {
-        // Paid ahead - has future months paid
+        // Paid ahead - has future months already allocated
         const latestFuturePaid = futurePaidCharges[futurePaidCharges.length - 1]!
-        const monthsAhead = futurePaidCharges.length
+        // Calculate with advance on top of already-paid future
+        const { period: finalPaidUpTo, remainder } = calculatePaidUpToWithAdvance(latestFuturePaid.period)
         map[tenantId] = {
           type: 'ahead',
-          label: `Paid up to ${formatPeriod(latestFuturePaid.period)} (+${monthsAhead} month${monthsAhead > 1 ? 's' : ''} ahead)`,
-          paidUpTo: latestFuturePaid.period,
-          monthsAhead,
+          label: remainder > 0 
+            ? `Paid up to ${formatPeriod(finalPaidUpTo)} (${formatKES(remainder)} advance toward next)`
+            : `Paid up to ${formatPeriod(finalPaidUpTo)}`,
+          paidUpTo: finalPaidUpTo,
+          creditAmount: tenantAdvance,
         }
       } else if (currentMonthCharge && currentMonthCharge.status === 'PAID' && currentMonthCharge.balance === 0) {
-        // Paid up to current month
+        // Paid up to current month - calculate how far advance covers
+        const { period: paidUpTo } = calculatePaidUpToWithAdvance(currentPeriod)
         map[tenantId] = {
-          type: 'paid',
-          label: `Paid up to ${formatPeriod(currentPeriod)} (${formatKES(0)} owed)`,
-          paidUpTo: currentPeriod,
+          type: tenantAdvance > 0 ? 'ahead' : 'paid',
+          label: formatPaidUpToWithAdvance(currentPeriod),
+          paidUpTo: paidUpTo,
+          creditAmount: tenantAdvance,
         }
       } else if (currentMonthCharge && currentMonthCharge.balance > 0) {
         // Current month due but not overdue yet
@@ -313,6 +443,7 @@ export default function TenantsPage() {
           map[tenantId] = {
             type: 'due',
             label: `${formatPeriod(currentPeriod)} due (${formatKES(currentMonthCharge.balance)} by ${formatDueDay(currentMonthCharge.due_date)})`,
+            creditAmount: tenantAdvance,
           }
         } else {
           // Current month is overdue
@@ -321,22 +452,25 @@ export default function TenantsPage() {
             label: `1 month behind (${formatKES(currentMonthCharge.balance)} owed since ${formatPeriod(currentPeriod)})`,
             monthsBehind: 1,
             firstUnpaidPeriod: currentPeriod,
+            creditAmount: tenantAdvance,
           }
         }
       } else if (paidUpToPeriod) {
-        // Has some paid history
+        // Has some paid history - calculate how far advance covers beyond that
+        const { period: paidUpTo } = calculatePaidUpToWithAdvance(paidUpToPeriod)
         map[tenantId] = {
-          type: 'paid',
-          label: `Paid up to ${formatPeriod(paidUpToPeriod)} (${formatKES(totalOwed)} owed)`,
-          paidUpTo: paidUpToPeriod,
+          type: tenantAdvance > 0 ? 'ahead' : 'paid',
+          label: formatPaidUpToWithAdvance(paidUpToPeriod),
+          paidUpTo: paidUpTo,
+          creditAmount: tenantAdvance,
         }
       } else {
-        map[tenantId] = { type: 'no_charges', label: 'No rent charges yet' }
+        map[tenantId] = { type: 'no_charges', label: 'No rent charges yet', creditAmount: tenantAdvance }
       }
     })
 
     return map
-  }, [allRentCharges, tenancyById, currentPeriod])
+  }, [allRentCharges, tenancyById, currentPeriod, creditByTenantId, activeTenancyByTenantId])
 
   const createMutation = useMutation({
     mutationFn: async (payload: Omit<TenantFormState, 'id'>) => {
