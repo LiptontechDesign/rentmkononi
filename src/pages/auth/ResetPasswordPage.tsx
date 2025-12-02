@@ -82,15 +82,15 @@ export default function ResetPasswordPage() {
       <div className="min-h-screen flex items-center justify-center bg-linear-to-br from-blue-50 to-indigo-100 p-4">
         <Card className="w-full max-w-md">
           <CardHeader className="text-center">
-            <div className="flex justify-center mb-4">
-              <div className="flex items-center gap-3">
-                <img 
-                  src="/rentmkononi/Logo.png" 
-                  alt="RentMkononi Logo" 
-                  className="h-12 w-12 object-contain rounded"
+            <div className="flex flex-col items-center gap-3 mb-4">
+              <div className="flex items-center justify-center h-20 w-20 rounded-xl bg-white shadow-sm border">
+                <img
+                  src="/rentmkononi/Logo.png"
+                  alt="RentMkononi Logo"
+                  className="h-16 w-16 object-contain"
                 />
-                <span className="text-2xl font-bold text-primary">RentMkononi</span>
               </div>
+              <span className="text-2xl font-bold text-primary tracking-tight">RentMkononi</span>
             </div>
             <CardTitle className="text-xl text-red-600">Invalid or expired link</CardTitle>
             <CardDescription>
@@ -111,15 +111,15 @@ export default function ResetPasswordPage() {
     <div className="min-h-screen flex items-center justify-center bg-linear-to-br from-blue-50 to-indigo-100 p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <div className="flex justify-center mb-4">
-            <div className="flex items-center gap-3">
-              <img 
-                src="/rentmkononi/Logo.png" 
-                alt="RentMkononi Logo" 
-                className="h-12 w-12 object-contain rounded"
+          <div className="flex flex-col items-center gap-3 mb-4">
+            <div className="flex items-center justify-center h-20 w-20 rounded-xl bg-white shadow-sm border">
+              <img
+                src="/rentmkononi/Logo.png"
+                alt="RentMkononi Logo"
+                className="h-16 w-16 object-contain"
               />
-              <span className="text-2xl font-bold text-primary">RentMkononi</span>
             </div>
+            <span className="text-2xl font-bold text-primary tracking-tight">RentMkononi</span>
           </div>
           <CardTitle className="text-xl">Reset your password</CardTitle>
           <CardDescription>
