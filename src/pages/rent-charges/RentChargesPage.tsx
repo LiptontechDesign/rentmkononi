@@ -229,6 +229,23 @@ export default function RentChargesPage() {
     }
   }, [rentCharges, tenancyMap, unitMap])
 
+  // Calculate total outstanding per tenant (across all their unpaid months)
+  const totalOutstandingByTenantId = useMemo(() => {
+    const totals: Record<string, { amount: number; months: string[] }> = {}
+    ;(rentCharges || []).forEach((charge) => {
+      if (charge.balance <= 0) return
+      const tenancy = tenancyMap.get(charge.tenancy_id)
+      if (!tenancy) return
+      const tenantId = tenancy.tenant_id
+      if (!totals[tenantId]) {
+        totals[tenantId] = { amount: 0, months: [] }
+      }
+      totals[tenantId].amount += charge.balance
+      totals[tenantId].months.push(formatPeriod(charge.period))
+    })
+    return totals
+  }, [rentCharges, tenancyMap])
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -423,7 +440,8 @@ export default function RentChargesPage() {
                     <th className="py-2 pr-4">Rent month</th>
                     <th className="py-2 pr-4">Date rent was due</th>
                     <th className="py-2 pr-4">Rent Amount (KES)</th>
-                    <th className="py-2 pr-4">Balance Owed (KES)</th>
+                    <th className="py-2 pr-4">This Month Balance</th>
+                    <th className="py-2 pr-4">Total Owed by Tenant</th>
                     <th className="py-2 pr-4">Status</th>
                   </tr>
                 </thead>
@@ -478,6 +496,9 @@ export default function RentChargesPage() {
                       }
                     }
 
+                    // Get tenant's total outstanding across all unpaid months
+                    const tenantTotal = tenant?.id ? totalOutstandingByTenantId[tenant.id] : null
+
                     return (
                       <tr key={charge.id} className="border-b last:border-0">
                         <td className="py-2 pr-4 font-medium">{capitalize(tenant?.full_name) || 'Unknown tenant'}</td>
@@ -491,13 +512,18 @@ export default function RentChargesPage() {
                         <td className="py-2 pr-4 text-muted-foreground">{formatDate(charge.due_date)}</td>
                         <td className="py-2 pr-4 text-muted-foreground">{formatKES(charge.amount)}</td>
                         <td className="py-2 pr-4">
-                          {hasBalance ? (
+                          <span className={hasBalance ? 'text-red-600 font-medium' : 'text-green-600'}>
+                            {formatKES(charge.balance)}
+                          </span>
+                        </td>
+                        <td className="py-2 pr-4">
+                          {tenantTotal && tenantTotal.amount > 0 ? (
                             <div>
-                              <span className="text-red-600 font-medium">
-                                {formatKES(charge.balance)}
+                              <span className="text-red-600 font-bold">
+                                {formatKES(tenantTotal.amount)}
                               </span>
                               <div className="text-xs text-muted-foreground">
-                                {formatPeriod(charge.period)} unpaid
+                                ({tenantTotal.months.join(', ')} unpaid)
                               </div>
                             </div>
                           ) : (
