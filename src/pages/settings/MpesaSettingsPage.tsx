@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Spinner } from '@/components/ui/spinner'
-import { Save, Check, AlertTriangle, Eye, EyeOff, Copy, CheckCircle2, XCircle } from 'lucide-react'
+import { Save, Check, AlertTriangle, Eye, EyeOff, Copy, CheckCircle2, XCircle, TestTube2, Link, Send } from 'lucide-react'
 
 interface MpesaFormState {
   paybillOrTill: string
@@ -41,6 +41,15 @@ export default function MpesaSettingsPage() {
   const [saveSuccess, setSaveSuccess] = useState(false)
   const [formError, setFormError] = useState('')
   const [copied, setCopied] = useState(false)
+
+  // Sandbox testing state
+  const [isSandboxMode] = useState(true) // For now, always sandbox until live credentials
+  const [showSimulator, setShowSimulator] = useState(false)
+  const [simulatorPhone, setSimulatorPhone] = useState('')
+  const [simulatorAmount, setSimulatorAmount] = useState('')
+  const [simulatorRef, setSimulatorRef] = useState('')
+  const [registerResult, setRegisterResult] = useState<{ success: boolean; message: string } | null>(null)
+  const [simulateResult, setSimulateResult] = useState<{ success: boolean; message: string } | null>(null)
 
   // Fetch existing M-Pesa settings
   const {
@@ -78,12 +87,10 @@ export default function MpesaSettingsPage() {
     }
   }, [mpesaSettings])
 
-  // Callback URL generated and stored by the Edge Function.
-  // Fall back to the new c2b-callback pattern if settings are not yet created.
-  const callbackUrl = mpesaSettings?.callback_url ??
-    (landlord
-      ? `https://lylmyqdesefsmuchyhqh.supabase.co/functions/v1/c2b-callback?landlord_id=${landlord.id}`
-      : '')
+  // Callback URL - uses c2b-callback which has JWT verification disabled for Safaricom to call
+  const callbackUrl = landlord
+    ? `https://lylmyqdesefsmuchyhqh.supabase.co/functions/v1/c2b-callback?landlord_id=${landlord.id}`
+    : ''
 
   // Save mutation - calls Edge Function to encrypt and save
   const saveMutation = useMutation({
@@ -129,6 +136,63 @@ export default function MpesaSettingsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['mpesa-settings', landlord?.id] })
+    },
+  })
+
+  // Register C2B URLs mutation
+  const registerUrlsMutation = useMutation({
+    mutationFn: async () => {
+      if (!landlord) throw new Error('Landlord not loaded')
+
+      const { data, error } = await supabase.functions.invoke('c2b-register', {
+        body: {
+          landlord_id: landlord.id,
+          is_sandbox: isSandboxMode,
+        },
+      })
+
+      if (error) throw error
+      if (data?.error) throw new Error(data.error)
+
+      return data
+    },
+    onSuccess: (data) => {
+      setRegisterResult({ success: true, message: data.message || 'URLs registered successfully!' })
+      queryClient.invalidateQueries({ queryKey: ['mpesa-settings', landlord?.id] })
+    },
+    onError: (err) => {
+      setRegisterResult({ success: false, message: err instanceof Error ? err.message : 'Registration failed' })
+    },
+  })
+
+  // Simulate C2B payment mutation
+  const simulatePaymentMutation = useMutation({
+    mutationFn: async (payload: { phone: string; amount: number; ref: string }) => {
+      if (!landlord) throw new Error('Landlord not loaded')
+
+      const { data, error } = await supabase.functions.invoke('c2b-simulate', {
+        body: {
+          landlord_id: landlord.id,
+          phone_number: payload.phone,
+          amount: payload.amount,
+          bill_ref_number: payload.ref,
+        },
+      })
+
+      if (error) throw error
+      if (data?.error) throw new Error(data.error)
+
+      return data
+    },
+    onSuccess: (data) => {
+      setSimulateResult({ success: true, message: data.message || 'Payment simulation sent!' })
+      // Clear form
+      setSimulatorPhone('')
+      setSimulatorAmount('')
+      setSimulatorRef('')
+    },
+    onError: (err) => {
+      setSimulateResult({ success: false, message: err instanceof Error ? err.message : 'Simulation failed' })
     },
   })
 
@@ -183,7 +247,42 @@ export default function MpesaSettingsPage() {
     setTimeout(() => setCopied(false), 2000)
   }
 
+  const handleRegisterUrls = async () => {
+    setRegisterResult(null)
+    try {
+      await registerUrlsMutation.mutateAsync()
+    } catch {
+      // Error handled in mutation
+    }
+  }
+
+  const handleSimulatePayment = async () => {
+    setSimulateResult(null)
+    
+    const amount = parseFloat(simulatorAmount)
+    if (!simulatorPhone.trim()) {
+      setSimulateResult({ success: false, message: 'Phone number is required' })
+      return
+    }
+    if (isNaN(amount) || amount <= 0) {
+      setSimulateResult({ success: false, message: 'Valid amount is required' })
+      return
+    }
+
+    try {
+      await simulatePaymentMutation.mutateAsync({
+        phone: simulatorPhone.trim(),
+        amount,
+        ref: simulatorRef.trim(),
+      })
+    } catch {
+      // Error handled in mutation
+    }
+  }
+
   const isSaving = saveMutation.isPending || toggleStatusMutation.isPending
+  const isRegistering = registerUrlsMutation.isPending
+  const isSimulating = simulatePaymentMutation.isPending
   const hasSettings = !!mpesaSettings
   const isActive = mpesaSettings?.status === 'ACTIVE'
 
@@ -348,6 +447,157 @@ export default function MpesaSettingsPage() {
             <p className="text-xs text-muted-foreground mt-2">
               Use this URL as your C2B (Customer to Business) callback URL in the Safaricom Daraja portal.
             </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Sandbox Testing Card */}
+      {hasSettings && (
+        <Card className="border-purple-200 bg-purple-50/30">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <TestTube2 className="h-5 w-5 text-purple-600" />
+              Sandbox Testing
+              <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-purple-100 text-purple-800">
+                Test Mode
+              </span>
+            </CardTitle>
+            <CardDescription>
+              Test your M-Pesa integration using Safaricom's sandbox environment. No real money is involved.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Step 1: Register URLs */}
+            <div className="space-y-2">
+              <h4 className="font-medium text-sm">Step 1: Register C2B URLs</h4>
+              <p className="text-xs text-muted-foreground">
+                Register your callback URLs with Safaricom sandbox to receive payment notifications.
+              </p>
+              
+              {registerResult && (
+                <div className={`p-3 text-sm rounded-md flex items-center gap-2 ${
+                  registerResult.success 
+                    ? 'text-green-600 bg-green-50 border border-green-200' 
+                    : 'text-red-600 bg-red-50 border border-red-200'
+                }`}>
+                  {registerResult.success ? <Check className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
+                  {registerResult.message}
+                </div>
+              )}
+
+              <Button 
+                onClick={handleRegisterUrls} 
+                disabled={isRegistering}
+                variant="outline"
+                className="border-purple-300 hover:bg-purple-100"
+              >
+                {isRegistering ? (
+                  <Spinner size="sm" className="mr-2" />
+                ) : (
+                  <Link className="h-4 w-4 mr-2" />
+                )}
+                Register C2B URLs with Safaricom
+              </Button>
+            </div>
+
+            {/* Step 2: Simulate Payment */}
+            <div className="space-y-2 pt-4 border-t">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="font-medium text-sm">Step 2: Simulate a Payment</h4>
+                  <p className="text-xs text-muted-foreground">
+                    Simulate a C2B payment to test your integration flow.
+                  </p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowSimulator(!showSimulator)}
+                >
+                  {showSimulator ? 'Hide' : 'Show'} Simulator
+                </Button>
+              </div>
+
+              {showSimulator && (
+                <div className="space-y-3 p-4 bg-white rounded-lg border">
+                  {simulateResult && (
+                    <div className={`p-3 text-sm rounded-md flex items-center gap-2 ${
+                      simulateResult.success 
+                        ? 'text-green-600 bg-green-50 border border-green-200' 
+                        : 'text-red-600 bg-red-50 border border-red-200'
+                    }`}>
+                      {simulateResult.success ? <Check className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
+                      {simulateResult.message}
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div className="space-y-1">
+                      <Label htmlFor="simPhone" className="text-xs">Phone Number</Label>
+                      <Input
+                        id="simPhone"
+                        value={simulatorPhone}
+                        onChange={(e) => setSimulatorPhone(e.target.value)}
+                        placeholder="254708374149"
+                        disabled={isSimulating}
+                        className="text-sm"
+                      />
+                      <p className="text-xs text-muted-foreground">Use test number</p>
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="simAmount" className="text-xs">Amount (KES)</Label>
+                      <Input
+                        id="simAmount"
+                        type="number"
+                        value={simulatorAmount}
+                        onChange={(e) => setSimulatorAmount(e.target.value)}
+                        placeholder="1000"
+                        disabled={isSimulating}
+                        className="text-sm"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="simRef" className="text-xs">Account/Reference</Label>
+                      <Input
+                        id="simRef"
+                        value={simulatorRef}
+                        onChange={(e) => setSimulatorRef(e.target.value)}
+                        placeholder="Unit code or name"
+                        disabled={isSimulating}
+                        className="text-sm"
+                      />
+                      <p className="text-xs text-muted-foreground">For matching</p>
+                    </div>
+                  </div>
+
+                  <Button 
+                    onClick={handleSimulatePayment} 
+                    disabled={isSimulating}
+                    className="w-full bg-purple-600 hover:bg-purple-700"
+                  >
+                    {isSimulating ? (
+                      <Spinner size="sm" className="mr-2 text-white" />
+                    ) : (
+                      <Send className="h-4 w-4 mr-2" />
+                    )}
+                    Simulate C2B Payment
+                  </Button>
+
+                  <p className="text-xs text-muted-foreground text-center">
+                    After simulating, check your <strong>Payments</strong> page. Unmatched payments go to <strong>Unmatched Payments</strong>.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Info Box */}
+            <div className="p-3 bg-purple-100 border border-purple-200 rounded-md text-sm text-purple-800">
+              <p className="font-medium">Sandbox Test Credentials</p>
+              <p className="text-xs mt-1">
+                Use the test shortcode <strong>174379</strong> and test phone <strong>254708374149</strong> for sandbox testing.
+                Get your sandbox credentials from the <a href="https://developer.safaricom.co.ke/MyApps" target="_blank" rel="noopener noreferrer" className="underline">Daraja Portal</a>.
+              </p>
+            </div>
           </CardContent>
         </Card>
       )}
