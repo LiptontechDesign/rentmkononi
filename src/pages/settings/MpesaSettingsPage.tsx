@@ -149,8 +149,15 @@ export default function MpesaSettingsPage() {
         },
       })
 
-      if (error) throw error
-      if (data?.error) throw new Error(data.error)
+      // Handle both error formats
+      if (error) {
+        // Try to get detailed error from data
+        if (data?.error) throw new Error(data.error)
+        if (data?.details) throw new Error(`${data.error || 'Error'}: ${data.details}`)
+        throw new Error(error.message || 'Registration failed')
+      }
+      if (data?.error) throw new Error(data.error + (data.details ? `: ${data.details}` : ''))
+      if (data?.success === false) throw new Error(data.error || 'Registration failed')
 
       return data
     },
@@ -159,6 +166,7 @@ export default function MpesaSettingsPage() {
       queryClient.invalidateQueries({ queryKey: ['mpesa-settings', landlord?.id] })
     },
     onError: (err) => {
+      console.error('Register URL error:', err)
       setRegisterResult({ success: false, message: err instanceof Error ? err.message : 'Registration failed' })
     },
   })
