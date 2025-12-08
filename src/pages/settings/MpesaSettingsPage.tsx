@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Spinner } from '@/components/ui/spinner'
-import { Save, Check, AlertTriangle, Eye, EyeOff, Copy, CheckCircle2, XCircle, TestTube2, Link, Send } from 'lucide-react'
+import { Save, Check, AlertTriangle, Eye, EyeOff, Copy, CheckCircle2, XCircle, Link, Send } from 'lucide-react'
 
 interface MpesaFormState {
   paybillOrTill: string
@@ -42,8 +42,7 @@ export default function MpesaSettingsPage() {
   const [formError, setFormError] = useState('')
   const [copied, setCopied] = useState(false)
 
-  // Sandbox testing state
-  const [isSandboxMode] = useState(true) // For now, always sandbox until live credentials
+  // URL registration and payment simulation state
   const [showSimulator, setShowSimulator] = useState(false)
   const [simulatorPhone, setSimulatorPhone] = useState('')
   const [simulatorAmount, setSimulatorAmount] = useState('')
@@ -147,7 +146,6 @@ export default function MpesaSettingsPage() {
       const { data, error } = await supabase.functions.invoke('c2b-register', {
         body: {
           landlord_id: landlord.id,
-          is_sandbox: isSandboxMode,
         },
       })
 
@@ -415,65 +413,42 @@ export default function MpesaSettingsPage() {
         </CardContent>
       </Card>
 
-      {/* Callback URL Card */}
+      {/* Callback URL & Registration Card */}
       {hasSettings && (
         <Card>
           <CardHeader>
-            <CardTitle>Callback URL</CardTitle>
+            <CardTitle>Callback URL & Registration</CardTitle>
             <CardDescription>
-              Configure this URL in your Safaricom Daraja portal to receive payment notifications.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-2">
-              <Input
-                value={callbackUrl}
-                readOnly
-                className="font-mono text-sm"
-              />
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={copyCallbackUrl}
-                title="Copy to clipboard"
-              >
-                {copied ? (
-                  <Check className="h-4 w-4 text-green-600" />
-                ) : (
-                  <Copy className="h-4 w-4" />
-                )}
-              </Button>
-            </div>
-            <p className="text-xs text-muted-foreground mt-2">
-              Use this URL as your C2B (Customer to Business) callback URL in the Safaricom Daraja portal.
-            </p>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Sandbox Testing Card */}
-      {hasSettings && (
-        <Card className="border-purple-200 bg-purple-50/30">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <TestTube2 className="h-5 w-5 text-purple-600" />
-              Sandbox Testing
-              <span className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-purple-100 text-purple-800">
-                Test Mode
-              </span>
-            </CardTitle>
-            <CardDescription>
-              Test your M-Pesa integration using Safaricom's sandbox environment. No real money is involved.
+              Register your callback URL with Safaricom to receive payment notifications automatically.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {/* Step 1: Register URLs */}
+            {/* Callback URL */}
             <div className="space-y-2">
-              <h4 className="font-medium text-sm">Step 1: Register C2B URLs</h4>
-              <p className="text-xs text-muted-foreground">
-                Register your callback URLs with Safaricom sandbox to receive payment notifications.
-              </p>
-              
+              <Label className="text-xs text-muted-foreground">Your Callback URL</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  value={callbackUrl}
+                  readOnly
+                  className="font-mono text-sm"
+                />
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={copyCallbackUrl}
+                  title="Copy to clipboard"
+                >
+                  {copied ? (
+                    <Check className="h-4 w-4 text-green-600" />
+                  ) : (
+                    <Copy className="h-4 w-4" />
+                  )}
+                </Button>
+              </div>
+            </div>
+
+            {/* Register URLs */}
+            <div className="space-y-2 pt-2">
               {registerResult && (
                 <div className={`p-3 text-sm rounded-md flex items-center gap-2 ${
                   registerResult.success 
@@ -489,24 +464,26 @@ export default function MpesaSettingsPage() {
                 onClick={handleRegisterUrls} 
                 disabled={isRegistering}
                 variant="outline"
-                className="border-purple-300 hover:bg-purple-100"
               >
                 {isRegistering ? (
                   <Spinner size="sm" className="mr-2" />
                 ) : (
                   <Link className="h-4 w-4 mr-2" />
                 )}
-                Register C2B URLs with Safaricom
+                Register URL with Safaricom
               </Button>
+              <p className="text-xs text-muted-foreground">
+                Click to register this callback URL with Safaricom's API. Required before receiving payments.
+              </p>
             </div>
 
-            {/* Step 2: Simulate Payment */}
+            {/* Payment Simulator */}
             <div className="space-y-2 pt-4 border-t">
               <div className="flex items-center justify-between">
                 <div>
-                  <h4 className="font-medium text-sm">Step 2: Simulate a Payment</h4>
+                  <h4 className="font-medium text-sm">Test Payment Simulator</h4>
                   <p className="text-xs text-muted-foreground">
-                    Simulate a C2B payment to test your integration flow.
+                    Simulate a payment to test your integration (sandbox only).
                   </p>
                 </div>
                 <Button
@@ -514,12 +491,12 @@ export default function MpesaSettingsPage() {
                   size="sm"
                   onClick={() => setShowSimulator(!showSimulator)}
                 >
-                  {showSimulator ? 'Hide' : 'Show'} Simulator
+                  {showSimulator ? 'Hide' : 'Show'}
                 </Button>
               </div>
 
               {showSimulator && (
-                <div className="space-y-3 p-4 bg-white rounded-lg border">
+                <div className="space-y-3 p-4 bg-muted/50 rounded-lg border">
                   {simulateResult && (
                     <div className={`p-3 text-sm rounded-md flex items-center gap-2 ${
                       simulateResult.success 
@@ -540,9 +517,8 @@ export default function MpesaSettingsPage() {
                         onChange={(e) => setSimulatorPhone(e.target.value)}
                         placeholder="254708374149"
                         disabled={isSimulating}
-                        className="text-sm"
+                        className="text-sm bg-background"
                       />
-                      <p className="text-xs text-muted-foreground">Use test number</p>
                     </div>
                     <div className="space-y-1">
                       <Label htmlFor="simAmount" className="text-xs">Amount (KES)</Label>
@@ -553,7 +529,7 @@ export default function MpesaSettingsPage() {
                         onChange={(e) => setSimulatorAmount(e.target.value)}
                         placeholder="1000"
                         disabled={isSimulating}
-                        className="text-sm"
+                        className="text-sm bg-background"
                       />
                     </div>
                     <div className="space-y-1">
@@ -562,41 +538,27 @@ export default function MpesaSettingsPage() {
                         id="simRef"
                         value={simulatorRef}
                         onChange={(e) => setSimulatorRef(e.target.value)}
-                        placeholder="Unit code or name"
+                        placeholder="Unit code"
                         disabled={isSimulating}
-                        className="text-sm"
+                        className="text-sm bg-background"
                       />
-                      <p className="text-xs text-muted-foreground">For matching</p>
                     </div>
                   </div>
 
                   <Button 
                     onClick={handleSimulatePayment} 
                     disabled={isSimulating}
-                    className="w-full bg-purple-600 hover:bg-purple-700"
+                    className="w-full"
                   >
                     {isSimulating ? (
                       <Spinner size="sm" className="mr-2 text-white" />
                     ) : (
                       <Send className="h-4 w-4 mr-2" />
                     )}
-                    Simulate C2B Payment
+                    Simulate Payment
                   </Button>
-
-                  <p className="text-xs text-muted-foreground text-center">
-                    After simulating, check your <strong>Payments</strong> page. Unmatched payments go to <strong>Unmatched Payments</strong>.
-                  </p>
                 </div>
               )}
-            </div>
-
-            {/* Info Box */}
-            <div className="p-3 bg-purple-100 border border-purple-200 rounded-md text-sm text-purple-800">
-              <p className="font-medium">Sandbox Test Credentials</p>
-              <p className="text-xs mt-1">
-                Use the test shortcode <strong>174379</strong> and test phone <strong>254708374149</strong> for sandbox testing.
-                Get your sandbox credentials from the <a href="https://developer.safaricom.co.ke/MyApps" target="_blank" rel="noopener noreferrer" className="underline">Daraja Portal</a>.
-              </p>
             </div>
           </CardContent>
         </Card>
